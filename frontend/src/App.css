@@ -62,6 +62,22 @@
   padding: 0.5rem 0.65rem;
 }
 
+.form__field textarea {
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  box-sizing: border-box;
+  font: inherit;
+  min-height: 6rem;
+  padding: 0.5rem 0.65rem;
+  resize: vertical;
+}
+
+.form__grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 1fr 1fr;
+}
+
 .form__submit {
   margin-top: 0.25rem;
 }
@@ -145,6 +161,14 @@
   min-height: 100vh;
 }
 
+.editor__title {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
 .slide-deck {
   align-items: center;
   display: flex;
@@ -152,8 +176,35 @@
   gap: 0.75rem;
 }
 
+.slide-deck__top {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+  width: 100%;
+}
+
 .slide-deck__label {
   margin: 0;
+}
+
+.slide-deck__tools {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.slide-deck__stage {
+  align-items: center;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: auto 1fr auto;
+  width: 100%;
+}
+
+.slide-deck__nav:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .slide-deck__canvas {
@@ -162,7 +213,52 @@
   border: 1px solid #ccc;
   border-radius: 8px;
   max-width: 960px;
+  overflow: hidden;
+  position: relative;
   width: 100%;
+}
+
+.slide-text {
+  border: 1px solid #b8b8b8;
+  box-sizing: border-box;
+  left: 0;
+  overflow: auto;
+  padding: 0.35rem;
+  position: absolute;
+  text-align: left;
+  top: 0;
+  white-space: pre-wrap;
+}
+
+.slide-image,
+.slide-video,
+.slide-code {
+  border: 1px solid #b8b8b8;
+  box-sizing: border-box;
+  left: 0;
+  overflow: hidden;
+  position: absolute;
+  top: 0;
+}
+
+.slide-image img {
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.slide-video iframe {
+  border: 0;
+  height: 100%;
+  width: 100%;
+}
+
+.slide-code pre {
+  height: 100%;
+  margin: 0;
+  overflow: auto;
+  padding: 0.35rem;
+  white-space: pre;
 }
 
 .modal-backdrop {
@@ -255,6 +351,12 @@
     color: inherit;
   }
 
+  .form__field textarea {
+    background: #1a1a1a;
+    border-color: #444;
+    color: inherit;
+  }
+
   .dashboard__bar {
     border-color: #444;
   }
@@ -278,6 +380,16 @@
   .slide-deck__canvas {
     background: #101010;
     border-color: #444;
+  }
+
+  .slide-text {
+    border-color: #686868;
+  }
+
+  .slide-image,
+  .slide-video,
+  .slide-code {
+    border-color: #686868;
   }
 
   .modal {
