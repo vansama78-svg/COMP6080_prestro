@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import hljs from "highlight.js/lib/core";
 import c from "highlight.js/lib/languages/c";
 import javascript from "highlight.js/lib/languages/javascript";
@@ -6,12 +6,20 @@ import python from "highlight.js/lib/languages/python";
 import "highlight.js/styles/github.css";
 import { useNavigate, useParams } from "react-router-dom";
 import { getStoreApi, putStoreApi } from "../api/store";
+import { getElementStyle, withAutoplay } from "../lib/slideDeckUtils";
 import { useAuth } from "../hooks/useAuth";
 import { useError } from "../hooks/useError";
 import {
+  DEFAULT_SLIDE_BACKGROUND,
+  FONT_CHOICES,
+  defaultFontFamily,
+  resolveSlideBackground,
+  slideBackgroundToStyle,
   type CodeElement,
   type ImageElement,
   type Presentation,
+  type Slide,
+  type SlideBackground,
   type SlideElement,
   type TextElement,
   type VideoElement,
@@ -27,6 +35,7 @@ type TextForm = {
   content: string;
   fontSizeEm: string;
   color: string;
+  fontFamily: string;
   x: string;
   y: string;
 };
@@ -58,12 +67,66 @@ type CodeForm = {
   y: string;
 };
 
+type BgDraft = {
+  kind: "solid" | "gradient" | "image";
+  solid: string;
+  gradFrom: string;
+  gradTo: string;
+  gradDir: "tb" | "lr";
+  imageSrc: string;
+};
+
+const GRAD_ANGLE: Record<BgDraft["gradDir"], number> = { tb: 180, lr: 90 };
+
+function backgroundToDraft(bg: SlideBackground): BgDraft {
+  if (bg.kind === "solid") {
+    return {
+      kind: "solid",
+      solid: bg.color,
+      gradFrom: "#ffffff",
+      gradTo: "#000000",
+      gradDir: "tb",
+      imageSrc: "",
+    };
+  }
+  if (bg.kind === "gradient") {
+    const gradDir = bg.angleDeg === 90 ? "lr" : "tb";
+    return {
+      kind: "gradient",
+      solid: "#ffffff",
+      gradFrom: bg.from,
+      gradTo: bg.to,
+      gradDir,
+      imageSrc: "",
+    };
+  }
+  return {
+    kind: "image",
+    solid: "#ffffff",
+    gradFrom: "#ffffff",
+    gradTo: "#000000",
+    gradDir: "tb",
+    imageSrc: bg.src,
+  };
+}
+
+function draftToBackground(d: BgDraft): SlideBackground {
+  if (d.kind === "solid") {
+    return { kind: "solid", color: d.solid };
+  }
+  if (d.kind === "gradient") {
+    return { kind: "gradient", from: d.gradFrom, to: d.gradTo, angleDeg: GRAD_ANGLE[d.gradDir] };
+  }
+  return { kind: "image", src: d.imageSrc.trim() };
+}
+
 const DEFAULT_TEXT_FORM: TextForm = {
   width: "40",
   height: "20",
   content: "",
   fontSizeEm: "1",
   color: "#000000",
+  fontFamily: defaultFontFamily(),
   x: "0",
   y: "0",
 };
@@ -107,22 +170,13 @@ function parsePercentInput(raw: string, label: string): number {
   return n;
 }
 
-function withAutoplay(url: string, autoplay: boolean): string {
-  if (!autoplay) {
-    return url;
-  }
-  const separator = url.includes("?") ? "&" : "?";
-  return `${url}${separator}autoplay=1`;
-}
-
-function getElementStyle(element: SlideElement) {
-  return {
-    height: `${String(element.height)}%`,
-    left: `${String(element.x)}%`,
-    top: `${String(element.y)}%`,
-    width: `${String(element.width)}%`,
-    zIndex: element.layer,
-  };
+async function readFileAsDataUrl(file: File): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("Failed to read file."));
+    reader.readAsDataURL(file);
+  });
 }
 
 export function PresentationEditorPage() {
@@ -140,10 +194,15 @@ export function PresentationEditorPage() {
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [codeModalOpen, setCodeModalOpen] = useState(false);
+  const [themeModalOpen, setThemeModalOpen] = useState(false);
+  const [slidePanelOpen, setSlidePanelOpen] = useState(false);
   const [textForm, setTextForm] = useState<TextForm>(DEFAULT_TEXT_FORM);
   const [imageForm, setImageForm] = useState<ImageForm>(DEFAULT_IMAGE_FORM);
   const [videoForm, setVideoForm] = useState<VideoForm>(DEFAULT_VIDEO_FORM);
   const [codeForm, setCodeForm] = useState<CodeForm>(DEFAULT_CODE_FORM);
+  const [defDraft, setDefDraft] = useState<BgDraft>(() => backgroundToDraft(DEFAULT_SLIDE_BACKGROUND));
+  const [slideDraft, setSlideDraft] = useState<BgDraft>(() => backgroundToDraft(DEFAULT_SLIDE_BACKGROUND));
+  const [slideBgCustom, setSlideBgCustom] = useState(false);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [editingImageId, setEditingImageId] = useState<string | null>(null);
   const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
@@ -184,7 +243,7 @@ export function PresentationEditorPage() {
       return;
     }
     if (currentSlideNumber !== clampedSlideNumber) {
-      navigate(`/presentation/${presentationId}/${clampedSlideNumber}`, { replace: true });
+      navigate(`/presentation/${presentationId}/${String(clampedSlideNumber)}`, { replace: true });
     }
   }, [clampedSlideNumber, currentSlideNumber, navigate, presentation, presentationId]);
 
@@ -260,23 +319,26 @@ export function PresentationEditorPage() {
     }
   };
 
-  const goToSlide = (next: number) => {
-    if (presentationId) {
-      navigate(`/presentation/${presentationId}/${next}`);
-    }
-  };
+  const goToSlide = useCallback(
+    (next: number) => {
+      if (presentationId) {
+        navigate(`/presentation/${presentationId}/${String(next)}`);
+      }
+    },
+    [navigate, presentationId],
+  );
 
-  const handlePrev = () => {
+  const handlePrev = useCallback(() => {
     if (clampedSlideNumber > 1) {
       goToSlide(clampedSlideNumber - 1);
     }
-  };
+  }, [clampedSlideNumber, goToSlide]);
 
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     if (presentation && clampedSlideNumber < presentation.slides.length) {
       goToSlide(clampedSlideNumber + 1);
     }
-  };
+  }, [clampedSlideNumber, goToSlide, presentation]);
 
   const handleAddSlide = async () => {
     if (!presentation) {
@@ -341,6 +403,89 @@ export function PresentationEditorPage() {
     }
   };
 
+  const openThemeModal = () => {
+    if (!presentation || !currentSlide) {
+      return;
+    }
+    setDefDraft(backgroundToDraft(presentation.defaultSlideBackground));
+    const override = currentSlide.backgroundOverride;
+    setSlideBgCustom(Boolean(override));
+    setSlideDraft(backgroundToDraft(override ?? presentation.defaultSlideBackground));
+    setThemeModalOpen(true);
+  };
+
+  const handleSaveDefaultBackground = async () => {
+    if (!presentation) {
+      return;
+    }
+    try {
+      if (defDraft.kind === "image" && !defDraft.imageSrc.trim()) {
+        throw new Error("Please provide an image URL or file for the default background.");
+      }
+      const nextBg = draftToBackground(defDraft);
+      const now = new Date().toISOString();
+      const nextPresentation: Presentation = {
+        ...presentation,
+        defaultSlideBackground: nextBg,
+        updatedAt: now,
+      };
+      const nextPresentations = presentations.map((item) =>
+        item.id === presentation.id ? nextPresentation : item,
+      );
+      await savePresentations(nextPresentations);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Failed to save default background");
+    }
+  };
+
+  const handleApplySlideBackground = async () => {
+    if (!presentation || !currentSlide) {
+      return;
+    }
+    try {
+      const idx = clampedSlideNumber - 1;
+      let override: SlideBackground | undefined;
+      if (!slideBgCustom) {
+        override = undefined;
+      } else {
+        if (slideDraft.kind === "image" && !slideDraft.imageSrc.trim()) {
+          throw new Error("Please provide an image URL or file for this slide background.");
+        }
+        override = draftToBackground(slideDraft);
+      }
+      const now = new Date().toISOString();
+      const nextSlides = presentation.slides.map((slide, i) => {
+        if (i !== idx) {
+          return slide;
+        }
+        if (override === undefined) {
+          const { backgroundOverride: _removed, ...rest } = slide;
+          void _removed;
+          return { ...rest } as Slide;
+        }
+        return { ...slide, backgroundOverride: override };
+      });
+      const nextPresentation: Presentation = { ...presentation, slides: nextSlides, updatedAt: now };
+      const nextPresentations = presentations.map((item) =>
+        item.id === presentation.id ? nextPresentation : item,
+      );
+      await savePresentations(nextPresentations);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Failed to update slide background");
+    }
+  };
+
+  const openPreview = () => {
+    if (!presentationId) {
+      return;
+    }
+    window.open(
+      `${window.location.origin}/preview/${presentationId}/${String(clampedSlideNumber)}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  };
+
   const openTextModal = (element?: TextElement) => {
     setEditingTextId(element?.id ?? null);
     setTextForm(
@@ -351,6 +496,7 @@ export function PresentationEditorPage() {
           content: element.content,
           fontSizeEm: String(element.fontSizeEm),
           color: element.color,
+          fontFamily: element.fontFamily,
           x: String(element.x),
           y: String(element.y),
         }
@@ -423,6 +569,9 @@ export function PresentationEditorPage() {
       if (!textForm.content.trim() || Number.isNaN(fontSizeEm) || fontSizeEm <= 0) {
         throw new Error("Please provide valid text and font size.");
       }
+      if (!textForm.fontFamily.trim()) {
+        throw new Error("Please choose a font.");
+      }
       const existing = currentSlide.elements;
       const nextLayer = getNextLayer();
       const updated: TextElement = {
@@ -435,6 +584,7 @@ export function PresentationEditorPage() {
         content: textForm.content,
         fontSizeEm,
         color: textForm.color,
+        fontFamily: textForm.fontFamily,
         layer: editingTextId
           ? existing.find((item) => item.id === editingTextId)?.layer ?? nextLayer
           : nextLayer,
@@ -569,18 +719,26 @@ export function PresentationEditorPage() {
     if (!file) {
       return;
     }
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result ?? ""));
-      reader.onerror = () => reject(new Error("Failed to read image file."));
-      reader.readAsDataURL(file);
-    });
-    setImageForm((prev) => ({ ...prev, src: dataUrl }));
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setImageForm((prev) => ({ ...prev, src: dataUrl }));
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Failed to read image file.");
+    }
   };
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (editMetaOpen || confirmDeleteOpen || textModalOpen || imageModalOpen || videoModalOpen || codeModalOpen) {
+      if (
+        editMetaOpen ||
+        confirmDeleteOpen ||
+        textModalOpen ||
+        imageModalOpen ||
+        videoModalOpen ||
+        codeModalOpen ||
+        themeModalOpen ||
+        slidePanelOpen
+      ) {
         return;
       }
       const target = e.target as HTMLElement | null;
@@ -599,7 +757,18 @@ export function PresentationEditorPage() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [codeModalOpen, confirmDeleteOpen, editMetaOpen, handleNext, handlePrev, imageModalOpen, textModalOpen, videoModalOpen]);
+  }, [
+    codeModalOpen,
+    confirmDeleteOpen,
+    editMetaOpen,
+    handleNext,
+    handlePrev,
+    imageModalOpen,
+    slidePanelOpen,
+    textModalOpen,
+    themeModalOpen,
+    videoModalOpen,
+  ]);
 
   if (loading) {
     return (
@@ -620,91 +789,281 @@ export function PresentationEditorPage() {
     );
   }
 
+  const canvasBg = currentSlide
+    ? slideBackgroundToStyle(resolveSlideBackground(presentation, currentSlide))
+    : {};
+
+  const renderDraftFields = (
+    draft: BgDraft,
+    setDraft: Dispatch<SetStateAction<BgDraft>>,
+    idPrefix: string,
+  ) => (
+    <>
+      <div className="form__field">
+        <label htmlFor={`${idPrefix}-kind`}>Background type</label>
+        <select
+          id={`${idPrefix}-kind`}
+          onChange={(e) => {
+            const kind = e.target.value as BgDraft["kind"];
+            setDraft((prev) => ({ ...prev, kind }));
+          }}
+          value={draft.kind}
+        >
+          <option value="solid">Solid colour</option>
+          <option value="gradient">Gradient</option>
+          <option value="image">Image</option>
+        </select>
+      </div>
+      {draft.kind === "solid" ? (
+        <div className="form__field">
+          <label htmlFor={`${idPrefix}-solid`}>Colour</label>
+          <input
+            id={`${idPrefix}-solid`}
+            onChange={(e) => setDraft((prev) => ({ ...prev, solid: e.target.value }))}
+            type="color"
+            value={draft.solid}
+          />
+        </div>
+      ) : null}
+      {draft.kind === "gradient" ? (
+        <>
+          <div className="form__grid">
+            <div className="form__field">
+              <label htmlFor={`${idPrefix}-from`}>From</label>
+              <input
+                id={`${idPrefix}-from`}
+                onChange={(e) => setDraft((prev) => ({ ...prev, gradFrom: e.target.value }))}
+                type="color"
+                value={draft.gradFrom}
+              />
+            </div>
+            <div className="form__field">
+              <label htmlFor={`${idPrefix}-to`}>To</label>
+              <input
+                id={`${idPrefix}-to`}
+                onChange={(e) => setDraft((prev) => ({ ...prev, gradTo: e.target.value }))}
+                type="color"
+                value={draft.gradTo}
+              />
+            </div>
+          </div>
+          <div className="form__field">
+            <label htmlFor={`${idPrefix}-dir`}>Direction</label>
+            <select
+              id={`${idPrefix}-dir`}
+              onChange={(e) =>
+                setDraft((prev) => ({
+                  ...prev,
+                  gradDir: e.target.value === "lr" ? "lr" : "tb",
+                }))
+              }
+              value={draft.gradDir}
+            >
+              <option value="tb">Top to bottom</option>
+              <option value="lr">Left to right</option>
+            </select>
+          </div>
+        </>
+      ) : null}
+      {draft.kind === "image" ? (
+        <>
+          <div className="form__field">
+            <label htmlFor={`${idPrefix}-imgurl`}>Image URL or data URL</label>
+            <input
+              id={`${idPrefix}-imgurl`}
+              onChange={(e) => setDraft((prev) => ({ ...prev, imageSrc: e.target.value }))}
+              type="text"
+              value={draft.imageSrc}
+            />
+          </div>
+          <div className="form__field">
+            <label htmlFor={`${idPrefix}-imgfile`}>Upload image</label>
+            <input
+              accept="image/*"
+              id={`${idPrefix}-imgfile`}
+              onChange={(e) => {
+                void (async () => {
+                  const file = e.target.files?.[0];
+                  if (!file) {
+                    return;
+                  }
+                  try {
+                    const dataUrl = await readFileAsDataUrl(file);
+                    setDraft((prev) => ({ ...prev, imageSrc: dataUrl }));
+                  } catch (err) {
+                    showError(err instanceof Error ? err.message : "Failed to read image.");
+                  }
+                })();
+              }}
+              type="file"
+            />
+          </div>
+        </>
+      ) : null}
+    </>
+  );
+
   return (
     <div className="editor">
       <header className="dashboard__bar">
-        <button onClick={() => navigate("/dashboard")} type="button">Back</button>
+        <button onClick={() => navigate("/dashboard")} type="button">
+          Back
+        </button>
         <div className="editor__title">
           <h1 className="dashboard__title">{presentation.name}</h1>
-          <button onClick={openEditMeta} type="button">Edit title / thumbnail</button>
+          <button onClick={openEditMeta} type="button">
+            Edit title / thumbnail
+          </button>
         </div>
-        <button onClick={() => setConfirmDeleteOpen(true)} type="button">Delete Presentation</button>
+        <button onClick={() => setConfirmDeleteOpen(true)} type="button">
+          Delete Presentation
+        </button>
       </header>
       <main className="page">
         <div className="slide-deck">
           <div className="slide-deck__top">
-            <p className="slide-deck__label">Slide {String(clampedSlideNumber)} / {String(slideCount)}</p>
+            <p className="slide-deck__label">
+              Slide {String(clampedSlideNumber)} / {String(slideCount)}
+            </p>
             <div className="slide-deck__tools" role="group" aria-label="Slide tools">
-              <button onClick={handleAddSlide} type="button">New slide</button>
-              <button onClick={() => openTextModal()} type="button">Add text</button>
-              <button onClick={() => openImageModal()} type="button">Add image</button>
-              <button onClick={() => openVideoModal()} type="button">Add video</button>
-              <button onClick={() => openCodeModal()} type="button">Add code</button>
-              <button onClick={handleDeleteSlide} type="button">Delete slide</button>
+              <button onClick={() => setSlidePanelOpen(true)} type="button">
+                Slides
+              </button>
+              <button onClick={openThemeModal} type="button">
+                Theme &amp; background
+              </button>
+              <button onClick={openPreview} type="button">
+                Preview
+              </button>
+              <button onClick={handleAddSlide} type="button">
+                New slide
+              </button>
+              <button onClick={() => openTextModal()} type="button">
+                Add text
+              </button>
+              <button onClick={() => openImageModal()} type="button">
+                Add image
+              </button>
+              <button onClick={() => openVideoModal()} type="button">
+                Add video
+              </button>
+              <button onClick={() => openCodeModal()} type="button">
+                Add code
+              </button>
+              <button onClick={handleDeleteSlide} type="button">
+                Delete slide
+              </button>
             </div>
           </div>
           <div className="slide-deck__stage">
-            <button aria-label="Previous slide" className="slide-deck__nav" disabled={clampedSlideNumber <= 1} onClick={handlePrev} type="button">◀</button>
-            <div className="slide-deck__canvas">
-              {currentSlide?.elements.slice().sort((a, b) => a.layer - b.layer).map((element) => {
-                if (element.type === "text") {
+            <button
+              aria-label="Previous slide"
+              className="slide-deck__nav"
+              disabled={clampedSlideNumber <= 1}
+              onClick={handlePrev}
+              type="button"
+            >
+              ◀
+            </button>
+            <div className="slide-deck__canvas" style={canvasBg}>
+              {currentSlide?.elements
+                .slice()
+                .sort((a, b) => a.layer - b.layer)
+                .map((element) => {
+                  if (element.type === "text") {
+                    return (
+                      <div
+                        className="slide-text"
+                        key={element.id}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          void handleDeleteElement(element.id);
+                        }}
+                        onDoubleClick={() => openTextModal(element)}
+                        style={{
+                          ...getElementStyle(element),
+                          color: element.color,
+                          fontFamily: element.fontFamily,
+                          fontSize: `${String(element.fontSizeEm)}em`,
+                        }}
+                        title="Double click to edit, right click to delete"
+                      >
+                        {element.content}
+                      </div>
+                    );
+                  }
+                  if (element.type === "image") {
+                    return (
+                      <div
+                        className="slide-image"
+                        key={element.id}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          void handleDeleteElement(element.id);
+                        }}
+                        onDoubleClick={() => openImageModal(element)}
+                        style={getElementStyle(element)}
+                        title="Double click to edit, right click to delete"
+                      >
+                        <img alt={element.alt} src={element.src} />
+                      </div>
+                    );
+                  }
+                  if (element.type === "video") {
+                    return (
+                      <div
+                        className="slide-video"
+                        key={element.id}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          void handleDeleteElement(element.id);
+                        }}
+                        onDoubleClick={() => openVideoModal(element)}
+                        style={getElementStyle(element)}
+                        title="Double click to edit, right click to delete"
+                      >
+                        <iframe
+                          allow="autoplay; encrypted-media; picture-in-picture"
+                          allowFullScreen
+                          src={withAutoplay(element.url, element.autoplay)}
+                          title={`video-${element.id}`}
+                        />
+                      </div>
+                    );
+                  }
+                  const highlighted = hljs.highlightAuto(element.code, [
+                    "c",
+                    "python",
+                    "javascript",
+                  ]).value;
                   return (
                     <div
-                      className="slide-text"
+                      className="slide-code"
                       key={element.id}
-                      onContextMenu={(e) => { e.preventDefault(); void handleDeleteElement(element.id); }}
-                      onDoubleClick={() => openTextModal(element)}
-                      style={{ ...getElementStyle(element), color: element.color, fontSize: `${String(element.fontSizeEm)}em` }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        void handleDeleteElement(element.id);
+                      }}
+                      onDoubleClick={() => openCodeModal(element)}
+                      style={{ ...getElementStyle(element), fontSize: `${String(element.fontSizeEm)}em` }}
                       title="Double click to edit, right click to delete"
                     >
-                      {element.content}
+                      <pre>
+                        <code dangerouslySetInnerHTML={{ __html: highlighted }} />
+                      </pre>
                     </div>
                   );
-                }
-                if (element.type === "image") {
-                  return (
-                    <div
-                      className="slide-image"
-                      key={element.id}
-                      onContextMenu={(e) => { e.preventDefault(); void handleDeleteElement(element.id); }}
-                      onDoubleClick={() => openImageModal(element)}
-                      style={getElementStyle(element)}
-                      title="Double click to edit, right click to delete"
-                    >
-                      <img alt={element.alt} src={element.src} />
-                    </div>
-                  );
-                }
-                if (element.type === "video") {
-                  return (
-                    <div
-                      className="slide-video"
-                      key={element.id}
-                      onContextMenu={(e) => { e.preventDefault(); void handleDeleteElement(element.id); }}
-                      onDoubleClick={() => openVideoModal(element)}
-                      style={getElementStyle(element)}
-                      title="Double click to edit, right click to delete"
-                    >
-                      <iframe allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen src={withAutoplay(element.url, element.autoplay)} title={`video-${element.id}`} />
-                    </div>
-                  );
-                }
-                const highlighted = hljs.highlightAuto(element.code, ["c", "python", "javascript"]).value;
-                return (
-                  <div
-                    className="slide-code"
-                    key={element.id}
-                    onContextMenu={(e) => { e.preventDefault(); void handleDeleteElement(element.id); }}
-                    onDoubleClick={() => openCodeModal(element)}
-                    style={{ ...getElementStyle(element), fontSize: `${String(element.fontSizeEm)}em` }}
-                    title="Double click to edit, right click to delete"
-                  >
-                    <pre><code dangerouslySetInnerHTML={{ __html: highlighted }} /></pre>
-                  </div>
-                );
-              })}
+                })}
             </div>
-            <button aria-label="Next slide" className="slide-deck__nav" disabled={presentation.slides.length === 0 || clampedSlideNumber >= presentation.slides.length} onClick={handleNext} type="button">▶</button>
+            <button
+              aria-label="Next slide"
+              className="slide-deck__nav"
+              disabled={presentation.slides.length === 0 || clampedSlideNumber >= presentation.slides.length}
+              onClick={handleNext}
+              type="button"
+            >
+              ▶
+            </button>
           </div>
         </div>
       </main>
@@ -715,8 +1074,92 @@ export function PresentationEditorPage() {
             <h2 className="modal__title">Are you sure?</h2>
             <p>This will permanently delete this presentation.</p>
             <div className="modal__footer">
-              <button onClick={() => setConfirmDeleteOpen(false)} type="button">No</button>
-              <button onClick={handleDeletePresentation} type="button">Yes</button>
+              <button onClick={() => setConfirmDeleteOpen(false)} type="button">
+                No
+              </button>
+              <button onClick={handleDeletePresentation} type="button">
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {slidePanelOpen ? (
+        <div className="modal-backdrop" role="presentation">
+          <div
+            aria-labelledby="slide-panel-title"
+            aria-modal="true"
+            className="modal modal--slide-panel"
+            role="dialog"
+          >
+            <h2 className="modal__title" id="slide-panel-title">
+              Slide control panel
+            </h2>
+            <ul className="slide-panel-list">
+              {presentation.slides.map((slide, i) => (
+                <li className="slide-panel-list__item" key={slide.id}>
+                  <button
+                    className={`slide-panel-item${i + 1 === clampedSlideNumber ? " slide-panel-item--active" : ""}`}
+                    onClick={() => {
+                      goToSlide(i + 1);
+                      setSlidePanelOpen(false);
+                    }}
+                    type="button"
+                  >
+                    Slide {String(i + 1)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="modal__footer">
+              <button onClick={() => setSlidePanelOpen(false)} type="button">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {themeModalOpen ? (
+        <div className="modal-backdrop" role="presentation">
+          <div aria-modal="true" className="modal modal--wide" role="dialog">
+            <h2 className="modal__title">Theme &amp; background</h2>
+            <fieldset className="theme-fieldset">
+              <legend>Presentation default</legend>
+              <p className="theme-hint">
+                Applies to new slides and any slide that does not use a custom background.
+              </p>
+              {renderDraftFields(defDraft, setDefDraft, "def")}
+              <div className="modal__footer modal__footer--inline">
+                <button onClick={handleSaveDefaultBackground} type="button">
+                  Save default
+                </button>
+              </div>
+            </fieldset>
+            <fieldset className="theme-fieldset">
+              <legend>Current slide</legend>
+              <div className="form__field">
+                <label>
+                  <input
+                    checked={slideBgCustom}
+                    onChange={(e) => setSlideBgCustom(e.target.checked)}
+                    type="checkbox"
+                  />{" "}
+                  Use custom background on this slide
+                </label>
+              </div>
+              {slideBgCustom ? renderDraftFields(slideDraft, setSlideDraft, "slide") : null}
+              <div className="modal__footer modal__footer--inline">
+                <button onClick={handleApplySlideBackground} type="button">
+                  Apply to this slide
+                </button>
+              </div>
+            </fieldset>
+            <div className="modal__footer">
+              <button onClick={() => setThemeModalOpen(false)} type="button">
+                Done
+              </button>
             </div>
           </div>
         </div>
@@ -729,16 +1172,30 @@ export function PresentationEditorPage() {
             <div className="form">
               <div className="form__field">
                 <label htmlFor="edit-pres-name">Title</label>
-                <input id="edit-pres-name" onChange={(e) => setDraftName(e.target.value)} type="text" value={draftName} />
+                <input
+                  id="edit-pres-name"
+                  onChange={(e) => setDraftName(e.target.value)}
+                  type="text"
+                  value={draftName}
+                />
               </div>
               <div className="form__field">
                 <label htmlFor="edit-pres-thumbnail">Thumbnail URL</label>
-                <input id="edit-pres-thumbnail" onChange={(e) => setDraftThumbnail(e.target.value)} type="url" value={draftThumbnail} />
+                <input
+                  id="edit-pres-thumbnail"
+                  onChange={(e) => setDraftThumbnail(e.target.value)}
+                  type="url"
+                  value={draftThumbnail}
+                />
               </div>
             </div>
             <div className="modal__footer">
-              <button onClick={() => setEditMetaOpen(false)} type="button">Cancel</button>
-              <button onClick={handleSaveMeta} type="button">Save</button>
+              <button onClick={() => setEditMetaOpen(false)} type="button">
+                Cancel
+              </button>
+              <button onClick={handleSaveMeta} type="button">
+                Save
+              </button>
             </div>
           </div>
         </div>
@@ -749,19 +1206,93 @@ export function PresentationEditorPage() {
           <div aria-modal="true" className="modal" role="dialog">
             <h2 className="modal__title">{editingTextId ? "Edit text box" : "Add text box"}</h2>
             <div className="form">
-              <div className="form__field"><label htmlFor="text-width">Width (%)</label><input id="text-width" onChange={(e) => setTextForm((p) => ({ ...p, width: e.target.value }))} type="number" value={textForm.width} /></div>
-              <div className="form__field"><label htmlFor="text-height">Height (%)</label><input id="text-height" onChange={(e) => setTextForm((p) => ({ ...p, height: e.target.value }))} type="number" value={textForm.height} /></div>
-              <div className="form__field"><label htmlFor="text-content">Text</label><textarea id="text-content" onChange={(e) => setTextForm((p) => ({ ...p, content: e.target.value }))} value={textForm.content} /></div>
-              <div className="form__field"><label htmlFor="text-font-size">Font size (em)</label><input id="text-font-size" onChange={(e) => setTextForm((p) => ({ ...p, fontSizeEm: e.target.value }))} step="0.1" type="number" value={textForm.fontSizeEm} /></div>
-              <div className="form__field"><label htmlFor="text-color">Text colour</label><input id="text-color" onChange={(e) => setTextForm((p) => ({ ...p, color: e.target.value }))} type="color" value={textForm.color} /></div>
+              <div className="form__field">
+                <label htmlFor="text-width">Width (%)</label>
+                <input
+                  id="text-width"
+                  onChange={(e) => setTextForm((p) => ({ ...p, width: e.target.value }))}
+                  type="number"
+                  value={textForm.width}
+                />
+              </div>
+              <div className="form__field">
+                <label htmlFor="text-height">Height (%)</label>
+                <input
+                  id="text-height"
+                  onChange={(e) => setTextForm((p) => ({ ...p, height: e.target.value }))}
+                  type="number"
+                  value={textForm.height}
+                />
+              </div>
+              <div className="form__field">
+                <label htmlFor="text-content">Text</label>
+                <textarea
+                  id="text-content"
+                  onChange={(e) => setTextForm((p) => ({ ...p, content: e.target.value }))}
+                  value={textForm.content}
+                />
+              </div>
+              <div className="form__field">
+                <label htmlFor="text-font-size">Font size (em)</label>
+                <input
+                  id="text-font-size"
+                  onChange={(e) => setTextForm((p) => ({ ...p, fontSizeEm: e.target.value }))}
+                  step="0.1"
+                  type="number"
+                  value={textForm.fontSizeEm}
+                />
+              </div>
+              <div className="form__field">
+                <label htmlFor="text-font-family">Font</label>
+                <select
+                  id="text-font-family"
+                  onChange={(e) => setTextForm((p) => ({ ...p, fontFamily: e.target.value }))}
+                  value={textForm.fontFamily}
+                >
+                  {FONT_CHOICES.map((f) => (
+                    <option key={f.value} value={f.value}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form__field">
+                <label htmlFor="text-color">Text colour</label>
+                <input
+                  id="text-color"
+                  onChange={(e) => setTextForm((p) => ({ ...p, color: e.target.value }))}
+                  type="color"
+                  value={textForm.color}
+                />
+              </div>
               <div className="form__grid">
-                <div className="form__field"><label htmlFor="text-x">Position X (%)</label><input id="text-x" onChange={(e) => setTextForm((p) => ({ ...p, x: e.target.value }))} type="number" value={textForm.x} /></div>
-                <div className="form__field"><label htmlFor="text-y">Position Y (%)</label><input id="text-y" onChange={(e) => setTextForm((p) => ({ ...p, y: e.target.value }))} type="number" value={textForm.y} /></div>
+                <div className="form__field">
+                  <label htmlFor="text-x">Position X (%)</label>
+                  <input
+                    id="text-x"
+                    onChange={(e) => setTextForm((p) => ({ ...p, x: e.target.value }))}
+                    type="number"
+                    value={textForm.x}
+                  />
+                </div>
+                <div className="form__field">
+                  <label htmlFor="text-y">Position Y (%)</label>
+                  <input
+                    id="text-y"
+                    onChange={(e) => setTextForm((p) => ({ ...p, y: e.target.value }))}
+                    type="number"
+                    value={textForm.y}
+                  />
+                </div>
               </div>
             </div>
             <div className="modal__footer">
-              <button onClick={() => setTextModalOpen(false)} type="button">Cancel</button>
-              <button onClick={handleSaveText} type="button">Save</button>
+              <button onClick={() => setTextModalOpen(false)} type="button">
+                Cancel
+              </button>
+              <button onClick={handleSaveText} type="button">
+                Save
+              </button>
             </div>
           </div>
         </div>
@@ -772,19 +1303,81 @@ export function PresentationEditorPage() {
           <div aria-modal="true" className="modal" role="dialog">
             <h2 className="modal__title">{editingImageId ? "Edit image" : "Add image"}</h2>
             <div className="form">
-              <div className="form__field"><label htmlFor="image-width">Width (%)</label><input id="image-width" onChange={(e) => setImageForm((p) => ({ ...p, width: e.target.value }))} type="number" value={imageForm.width} /></div>
-              <div className="form__field"><label htmlFor="image-height">Height (%)</label><input id="image-height" onChange={(e) => setImageForm((p) => ({ ...p, height: e.target.value }))} type="number" value={imageForm.height} /></div>
-              <div className="form__field"><label htmlFor="image-src">Image URL / base64</label><input id="image-src" onChange={(e) => setImageForm((p) => ({ ...p, src: e.target.value }))} type="url" value={imageForm.src} /></div>
-              <div className="form__field"><label htmlFor="image-file">Or upload local image</label><input id="image-file" onChange={(e) => { void onImageFileChange(e.target.files?.[0] ?? null); }} type="file" accept="image/*" /></div>
-              <div className="form__field"><label htmlFor="image-alt">Alt description</label><input id="image-alt" onChange={(e) => setImageForm((p) => ({ ...p, alt: e.target.value }))} type="text" value={imageForm.alt} /></div>
+              <div className="form__field">
+                <label htmlFor="image-width">Width (%)</label>
+                <input
+                  id="image-width"
+                  onChange={(e) => setImageForm((p) => ({ ...p, width: e.target.value }))}
+                  type="number"
+                  value={imageForm.width}
+                />
+              </div>
+              <div className="form__field">
+                <label htmlFor="image-height">Height (%)</label>
+                <input
+                  id="image-height"
+                  onChange={(e) => setImageForm((p) => ({ ...p, height: e.target.value }))}
+                  type="number"
+                  value={imageForm.height}
+                />
+              </div>
+              <div className="form__field">
+                <label htmlFor="image-src">Image URL / base64</label>
+                <input
+                  id="image-src"
+                  onChange={(e) => setImageForm((p) => ({ ...p, src: e.target.value }))}
+                  type="url"
+                  value={imageForm.src}
+                />
+              </div>
+              <div className="form__field">
+                <label htmlFor="image-file">Or upload local image</label>
+                <input
+                  accept="image/*"
+                  id="image-file"
+                  onChange={(e) => {
+                    void onImageFileChange(e.target.files?.[0] ?? null);
+                  }}
+                  type="file"
+                />
+              </div>
+              <div className="form__field">
+                <label htmlFor="image-alt">Alt description</label>
+                <input
+                  id="image-alt"
+                  onChange={(e) => setImageForm((p) => ({ ...p, alt: e.target.value }))}
+                  type="text"
+                  value={imageForm.alt}
+                />
+              </div>
               <div className="form__grid">
-                <div className="form__field"><label htmlFor="image-x">Position X (%)</label><input id="image-x" onChange={(e) => setImageForm((p) => ({ ...p, x: e.target.value }))} type="number" value={imageForm.x} /></div>
-                <div className="form__field"><label htmlFor="image-y">Position Y (%)</label><input id="image-y" onChange={(e) => setImageForm((p) => ({ ...p, y: e.target.value }))} type="number" value={imageForm.y} /></div>
+                <div className="form__field">
+                  <label htmlFor="image-x">Position X (%)</label>
+                  <input
+                    id="image-x"
+                    onChange={(e) => setImageForm((p) => ({ ...p, x: e.target.value }))}
+                    type="number"
+                    value={imageForm.x}
+                  />
+                </div>
+                <div className="form__field">
+                  <label htmlFor="image-y">Position Y (%)</label>
+                  <input
+                    id="image-y"
+                    onChange={(e) => setImageForm((p) => ({ ...p, y: e.target.value }))}
+                    type="number"
+                    value={imageForm.y}
+                  />
+                </div>
               </div>
             </div>
             <div className="modal__footer">
-              <button onClick={() => setImageModalOpen(false)} type="button">Cancel</button>
-              <button onClick={handleSaveImage} type="button">Save</button>
+              <button onClick={() => setImageModalOpen(false)} type="button">
+                Cancel
+              </button>
+              <button onClick={handleSaveImage} type="button">
+                Save
+              </button>
             </div>
           </div>
         </div>
@@ -795,18 +1388,71 @@ export function PresentationEditorPage() {
           <div aria-modal="true" className="modal" role="dialog">
             <h2 className="modal__title">{editingVideoId ? "Edit video" : "Add video"}</h2>
             <div className="form">
-              <div className="form__field"><label htmlFor="video-width">Width (%)</label><input id="video-width" onChange={(e) => setVideoForm((p) => ({ ...p, width: e.target.value }))} type="number" value={videoForm.width} /></div>
-              <div className="form__field"><label htmlFor="video-height">Height (%)</label><input id="video-height" onChange={(e) => setVideoForm((p) => ({ ...p, height: e.target.value }))} type="number" value={videoForm.height} /></div>
-              <div className="form__field"><label htmlFor="video-url">YouTube embed URL</label><input id="video-url" onChange={(e) => setVideoForm((p) => ({ ...p, url: e.target.value }))} type="url" value={videoForm.url} /></div>
-              <div className="form__field"><label><input checked={videoForm.autoplay} onChange={(e) => setVideoForm((p) => ({ ...p, autoplay: e.target.checked }))} type="checkbox" /> Auto play</label></div>
+              <div className="form__field">
+                <label htmlFor="video-width">Width (%)</label>
+                <input
+                  id="video-width"
+                  onChange={(e) => setVideoForm((p) => ({ ...p, width: e.target.value }))}
+                  type="number"
+                  value={videoForm.width}
+                />
+              </div>
+              <div className="form__field">
+                <label htmlFor="video-height">Height (%)</label>
+                <input
+                  id="video-height"
+                  onChange={(e) => setVideoForm((p) => ({ ...p, height: e.target.value }))}
+                  type="number"
+                  value={videoForm.height}
+                />
+              </div>
+              <div className="form__field">
+                <label htmlFor="video-url">YouTube embed URL</label>
+                <input
+                  id="video-url"
+                  onChange={(e) => setVideoForm((p) => ({ ...p, url: e.target.value }))}
+                  type="url"
+                  value={videoForm.url}
+                />
+              </div>
+              <div className="form__field">
+                <label>
+                  <input
+                    checked={videoForm.autoplay}
+                    onChange={(e) => setVideoForm((p) => ({ ...p, autoplay: e.target.checked }))}
+                    type="checkbox"
+                  />{" "}
+                  Auto play
+                </label>
+              </div>
               <div className="form__grid">
-                <div className="form__field"><label htmlFor="video-x">Position X (%)</label><input id="video-x" onChange={(e) => setVideoForm((p) => ({ ...p, x: e.target.value }))} type="number" value={videoForm.x} /></div>
-                <div className="form__field"><label htmlFor="video-y">Position Y (%)</label><input id="video-y" onChange={(e) => setVideoForm((p) => ({ ...p, y: e.target.value }))} type="number" value={videoForm.y} /></div>
+                <div className="form__field">
+                  <label htmlFor="video-x">Position X (%)</label>
+                  <input
+                    id="video-x"
+                    onChange={(e) => setVideoForm((p) => ({ ...p, x: e.target.value }))}
+                    type="number"
+                    value={videoForm.x}
+                  />
+                </div>
+                <div className="form__field">
+                  <label htmlFor="video-y">Position Y (%)</label>
+                  <input
+                    id="video-y"
+                    onChange={(e) => setVideoForm((p) => ({ ...p, y: e.target.value }))}
+                    type="number"
+                    value={videoForm.y}
+                  />
+                </div>
               </div>
             </div>
             <div className="modal__footer">
-              <button onClick={() => setVideoModalOpen(false)} type="button">Cancel</button>
-              <button onClick={handleSaveVideo} type="button">Save</button>
+              <button onClick={() => setVideoModalOpen(false)} type="button">
+                Cancel
+              </button>
+              <button onClick={handleSaveVideo} type="button">
+                Save
+              </button>
             </div>
           </div>
         </div>
@@ -817,18 +1463,70 @@ export function PresentationEditorPage() {
           <div aria-modal="true" className="modal" role="dialog">
             <h2 className="modal__title">{editingCodeId ? "Edit code block" : "Add code block"}</h2>
             <div className="form">
-              <div className="form__field"><label htmlFor="code-width">Width (%)</label><input id="code-width" onChange={(e) => setCodeForm((p) => ({ ...p, width: e.target.value }))} type="number" value={codeForm.width} /></div>
-              <div className="form__field"><label htmlFor="code-height">Height (%)</label><input id="code-height" onChange={(e) => setCodeForm((p) => ({ ...p, height: e.target.value }))} type="number" value={codeForm.height} /></div>
-              <div className="form__field"><label htmlFor="code-content">Code</label><textarea id="code-content" onChange={(e) => setCodeForm((p) => ({ ...p, code: e.target.value }))} value={codeForm.code} /></div>
-              <div className="form__field"><label htmlFor="code-font-size">Font size (em)</label><input id="code-font-size" onChange={(e) => setCodeForm((p) => ({ ...p, fontSizeEm: e.target.value }))} step="0.1" type="number" value={codeForm.fontSizeEm} /></div>
+              <div className="form__field">
+                <label htmlFor="code-width">Width (%)</label>
+                <input
+                  id="code-width"
+                  onChange={(e) => setCodeForm((p) => ({ ...p, width: e.target.value }))}
+                  type="number"
+                  value={codeForm.width}
+                />
+              </div>
+              <div className="form__field">
+                <label htmlFor="code-height">Height (%)</label>
+                <input
+                  id="code-height"
+                  onChange={(e) => setCodeForm((p) => ({ ...p, height: e.target.value }))}
+                  type="number"
+                  value={codeForm.height}
+                />
+              </div>
+              <div className="form__field">
+                <label htmlFor="code-content">Code</label>
+                <textarea
+                  id="code-content"
+                  onChange={(e) => setCodeForm((p) => ({ ...p, code: e.target.value }))}
+                  value={codeForm.code}
+                />
+              </div>
+              <div className="form__field">
+                <label htmlFor="code-font-size">Font size (em)</label>
+                <input
+                  id="code-font-size"
+                  onChange={(e) => setCodeForm((p) => ({ ...p, fontSizeEm: e.target.value }))}
+                  step="0.1"
+                  type="number"
+                  value={codeForm.fontSizeEm}
+                />
+              </div>
               <div className="form__grid">
-                <div className="form__field"><label htmlFor="code-x">Position X (%)</label><input id="code-x" onChange={(e) => setCodeForm((p) => ({ ...p, x: e.target.value }))} type="number" value={codeForm.x} /></div>
-                <div className="form__field"><label htmlFor="code-y">Position Y (%)</label><input id="code-y" onChange={(e) => setCodeForm((p) => ({ ...p, y: e.target.value }))} type="number" value={codeForm.y} /></div>
+                <div className="form__field">
+                  <label htmlFor="code-x">Position X (%)</label>
+                  <input
+                    id="code-x"
+                    onChange={(e) => setCodeForm((p) => ({ ...p, x: e.target.value }))}
+                    type="number"
+                    value={codeForm.x}
+                  />
+                </div>
+                <div className="form__field">
+                  <label htmlFor="code-y">Position Y (%)</label>
+                  <input
+                    id="code-y"
+                    onChange={(e) => setCodeForm((p) => ({ ...p, y: e.target.value }))}
+                    type="number"
+                    value={codeForm.y}
+                  />
+                </div>
               </div>
             </div>
             <div className="modal__footer">
-              <button onClick={() => setCodeModalOpen(false)} type="button">Cancel</button>
-              <button onClick={handleSaveCode} type="button">Save</button>
+              <button onClick={() => setCodeModalOpen(false)} type="button">
+                Cancel
+              </button>
+              <button onClick={handleSaveCode} type="button">
+                Save
+              </button>
             </div>
           </div>
         </div>
