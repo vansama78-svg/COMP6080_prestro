@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { getStoreApi, putStoreApi } from "../api/store";
 import { useAuth } from "../hooks/useAuth";
 import { useError } from "../hooks/useError";
-import { EMPTY_STORE, type Presentation } from "../types/presentation";
+import { DEFAULT_SLIDE_BACKGROUND, EMPTY_STORE, type Presentation } from "../types/presentation";
 
 export function DashboardPage() {
   const { signOut, token } = useAuth();
@@ -59,6 +59,7 @@ export function DashboardPage() {
       name: name.trim(),
       description: description.trim(),
       thumbnail: thumbnail.trim(),
+      defaultSlideBackground: DEFAULT_SLIDE_BACKGROUND,
       slides: [{ id: crypto.randomUUID(), elements: [] }],
       createdAt: now,
       updatedAt: now,
