@@ -162,6 +162,56 @@ function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, value));
 }
 
+/** YouTube video IDs are 11 chars from this alphabet. */
+const YOUTUBE_VIDEO_ID = /^[\w-]{11}$/;
+
+/**
+ * Accepts embed links, watch URLs, youtu.be short links, or a bare 11-char id;
+ * returns a canonical https://www.youtube.com/embed/... URL for the iframe.
+ */
+function normalizeYouTubeEmbedUrl(raw: string): string | null {
+  const input = raw.trim();
+  if (!input) {
+    return null;
+  }
+  if (YOUTUBE_VIDEO_ID.test(input)) {
+    return `https://www.youtube.com/embed/${input}`;
+  }
+  let url: URL;
+  try {
+    url = new URL(input.includes("://") ? input : `https://${input}`);
+  } catch {
+    return null;
+  }
+  const host = url.hostname.replace(/^www\./, "").toLowerCase();
+  if (host === "youtu.be") {
+    const id = url.pathname.split("/").filter(Boolean)[0] ?? "";
+    return YOUTUBE_VIDEO_ID.test(id) ? `https://www.youtube.com/embed/${id}${url.search}` : null;
+  }
+  if (
+    host === "youtube.com" ||
+    host === "m.youtube.com" ||
+    host === "youtube-nocookie.com"
+  ) {
+    const path = url.pathname;
+    if (path.startsWith("/embed/")) {
+      const id = path.slice("/embed/".length).split("/")[0] ?? "";
+      return YOUTUBE_VIDEO_ID.test(id)
+        ? `https://www.youtube.com/embed/${id}${url.search}`
+        : null;
+    }
+    if (path === "/watch" || path === "/watch/") {
+      const v = url.searchParams.get("v");
+      return v && YOUTUBE_VIDEO_ID.test(v) ? `https://www.youtube.com/embed/${v}` : null;
+    }
+    if (path.startsWith("/shorts/")) {
+      const id = path.slice("/shorts/".length).split("/")[0] ?? "";
+      return YOUTUBE_VIDEO_ID.test(id) ? `https://www.youtube.com/embed/${id}` : null;
+    }
+  }
+  return null;
+}
+
 function parsePercentInput(raw: string, label: string): number {
   const n = Number(raw);
   if (Number.isNaN(n) || n < 0 || n > 100) {
@@ -647,8 +697,11 @@ export function PresentationEditorPage() {
       const height = parsePercentInput(videoForm.height, "Height");
       const x = parsePercentInput(videoForm.x, "X position");
       const y = parsePercentInput(videoForm.y, "Y position");
-      if (!videoForm.url.trim().includes("youtube.com/embed/")) {
-        throw new Error("Please provide a valid YouTube embed URL.");
+      const embedUrl = normalizeYouTubeEmbedUrl(videoForm.url);
+      if (!embedUrl) {
+        throw new Error(
+          "Please enter a valid YouTube link (watch page, youtu.be, embed URL, or 11-character video ID).",
+        );
       }
       const existing = currentSlide.elements;
       const nextLayer = getNextLayer();
@@ -659,7 +712,7 @@ export function PresentationEditorPage() {
         y: clampPercent(y),
         width: clampPercent(width),
         height: clampPercent(height),
-        url: videoForm.url.trim(),
+        url: embedUrl,
         autoplay: videoForm.autoplay,
         layer: editingVideoId
           ? existing.find((item) => item.id === editingVideoId)?.layer ?? nextLayer
@@ -1407,11 +1460,12 @@ export function PresentationEditorPage() {
                 />
               </div>
               <div className="form__field">
-                <label htmlFor="video-url">YouTube embed URL</label>
+                <label htmlFor="video-url">YouTube URL</label>
                 <input
                   id="video-url"
                   onChange={(e) => setVideoForm((p) => ({ ...p, url: e.target.value }))}
-                  type="url"
+                  placeholder="https://www.youtube.com/watch?v=… or embed / youtu.be"
+                  type="text"
                   value={videoForm.url}
                 />
               </div>
