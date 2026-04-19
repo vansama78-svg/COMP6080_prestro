@@ -4,3 +4,4 @@
 *.idea
 *dist
 *package-lock.json
+*.zip
