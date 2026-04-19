@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 import { ErrorDialog } from "./components/ErrorDialog";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -12,6 +13,7 @@ import "./App.css";
 export default function App() {
   return (
     <>
+      <ThemeToggle />
       <Routes>
         <Route element={<LandingPage />} path="/" />
         <Route element={<LoginPage />} path="/login" />

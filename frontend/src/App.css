@@ -55,17 +55,21 @@
 }
 
 .form__field input {
+  background-color: var(--color-input-bg);
   border-radius: 8px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--color-input-border);
   box-sizing: border-box;
+  color: var(--color-text);
   font: inherit;
   padding: 0.5rem 0.65rem;
 }
 
 .form__field textarea {
+  background-color: var(--color-input-bg);
   border-radius: 8px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--color-input-border);
   box-sizing: border-box;
+  color: var(--color-text);
   font: inherit;
   min-height: 6rem;
   padding: 0.5rem 0.65rem;
@@ -89,7 +93,8 @@
 
 .dashboard__bar {
   align-items: center;
-  border-bottom: 1px solid #ccc;
+  background-color: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
   box-sizing: border-box;
   display: flex;
   gap: 1rem;
@@ -115,7 +120,8 @@
 
 .presentation-card {
   align-items: stretch;
-  border: 1px solid #ccc;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   display: grid;
   gap: 0.6rem;
@@ -126,14 +132,14 @@
 
 .presentation-card__thumb {
   aspect-ratio: 2 / 1;
-  background: #f5f5f5;
+  background: var(--color-card-thumb);
   border-radius: 6px;
   object-fit: cover;
   width: 100%;
 }
 
 .presentation-card__thumb--empty {
-  border: 1px dashed #bbb;
+  border: 1px dashed var(--color-card-thumb-dash);
 }
 
 .presentation-card__meta {
@@ -209,8 +215,8 @@
 
 .slide-deck__canvas {
   aspect-ratio: 16 / 9;
-  background: #fff;
-  border: 1px solid #ccc;
+  background: var(--color-slide-canvas);
+  border: 1px solid var(--color-slide-chrome-border);
   border-radius: 8px;
   max-width: 960px;
   overflow: hidden;
@@ -219,7 +225,7 @@
 }
 
 .slide-text {
-  border: 1px solid #b8b8b8;
+  border: 1px solid var(--color-slide-element-border);
   box-sizing: border-box;
   left: 0;
   overflow: auto;
@@ -233,7 +239,7 @@
 .slide-image,
 .slide-video,
 .slide-code {
-  border: 1px solid #b8b8b8;
+  border: 1px solid var(--color-slide-element-border);
   box-sizing: border-box;
   left: 0;
   overflow: hidden;
@@ -263,7 +269,7 @@
 
 .modal-backdrop {
   align-items: center;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--backdrop-scrim);
   display: flex;
   inset: 0;
   justify-content: center;
@@ -273,9 +279,10 @@
 }
 
 .modal {
-  background: var(--surface, #fff);
+  background: var(--color-surface);
   border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-modal);
+  color: var(--color-text);
   max-width: 32rem;
   padding: 1rem 1.25rem;
   width: 100%;
@@ -294,7 +301,7 @@
 
 .error-dialog-backdrop {
   align-items: center;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--backdrop-scrim);
   box-sizing: border-box;
   display: flex;
   inset: 0;
@@ -305,9 +312,10 @@
 }
 
 .error-dialog {
-  background: var(--surface, #fff);
+  background: var(--color-surface);
   border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-modal);
+  color: var(--color-text);
   max-width: 28rem;
   padding: 1rem 1.25rem;
   width: 100%;
@@ -328,6 +336,7 @@
 .error-dialog__close {
   background: transparent;
   border: none;
+  color: var(--color-text);
   cursor: pointer;
   font-size: 1.5rem;
   line-height: 1;
@@ -361,7 +370,7 @@
 }
 
 .theme-fieldset {
-  border: 1px solid #ccc;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   margin: 0 0 1rem;
   padding: 0.75rem 1rem;
@@ -393,8 +402,9 @@
 }
 
 .slide-panel-item {
+  background-color: var(--color-surface-muted);
   border-radius: 8px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--color-border);
   cursor: pointer;
   font: inherit;
   padding: 0.65rem 0.85rem;
@@ -403,12 +413,12 @@
 }
 
 .slide-panel-item:hover {
-  border-color: #888;
+  border-color: var(--color-border-strong);
 }
 
 .slide-panel-item--active {
-  border-color: #246bfd;
-  box-shadow: 0 0 0 1px #246bfd;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
 }
 
 .preview-page {
@@ -521,55 +531,38 @@
   white-space: pre;
 }
 
-@media (prefers-color-scheme: dark) {
-  .form__field input {
-    background: #1a1a1a;
-    border-color: #444;
-    color: inherit;
-  }
+.theme-toggle {
+  align-items: center;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  box-shadow: var(--shadow-modal);
+  color: var(--color-text);
+  display: inline-flex;
+  gap: 0.4rem;
+  line-height: 1.2;
+  padding: 0.45rem 0.85rem;
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  z-index: 850;
+}
 
-  .form__field textarea {
-    background: #1a1a1a;
-    border-color: #444;
-    color: inherit;
-  }
+.theme-toggle:hover {
+  border-color: var(--color-border-strong);
+}
 
-  .dashboard__bar {
-    border-color: #444;
-  }
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
 
-  .error-dialog {
-    --surface: #2a2a2a;
-  }
+.theme-toggle__icon {
+  font-size: 1rem;
+  line-height: 1;
+}
 
-  .presentation-card {
-    border-color: #444;
-  }
-
-  .presentation-card__thumb {
-    background: #1f1f1f;
-  }
-
-  .presentation-card__thumb--empty {
-    border-color: #555;
-  }
-
-  .slide-deck__canvas {
-    background: #101010;
-    border-color: #444;
-  }
-
-  .slide-text {
-    border-color: #686868;
-  }
-
-  .slide-image,
-  .slide-video,
-  .slide-code {
-    border-color: #686868;
-  }
-
-  .modal {
-    --surface: #2a2a2a;
-  }
+.theme-toggle__text {
+  font-size: 0.82rem;
+  font-weight: 600;
 }
