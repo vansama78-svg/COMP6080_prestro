@@ -4,6 +4,8 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
+import { PresentationEditorPage } from "./pages/PresentationEditorPage";
+import { PresentationPreviewPage } from "./pages/PresentationPreviewPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import "./App.css";
 
@@ -21,6 +23,22 @@ export default function App() {
             </ProtectedRoute>
           }
           path="/dashboard"
+        />
+        <Route
+          element={
+            <ProtectedRoute>
+              <PresentationEditorPage />
+            </ProtectedRoute>
+          }
+          path="/presentation/:presentationId/:slideNumber"
+        />
+        <Route
+          element={
+            <ProtectedRoute>
+              <PresentationPreviewPage />
+            </ProtectedRoute>
+          }
+          path="/preview/:presentationId/:slideNumber"
         />
       </Routes>
       <ErrorDialog />
