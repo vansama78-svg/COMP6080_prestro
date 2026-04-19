@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import hljs from "highlight.js/lib/core";
 import c from "highlight.js/lib/languages/c";
 import javascript from "highlight.js/lib/languages/javascript";
@@ -56,6 +56,16 @@ export function PresentationPreviewPage() {
     ? Math.min(Math.max(1, currentSlideNumber), presentation.slides.length)
     : currentSlideNumber;
   const currentSlide = presentation?.slides[clampedSlideNumber - 1];
+
+  const prevPreviewSlideRef = useRef(clampedSlideNumber);
+  const [previewEnter, setPreviewEnter] = useState<"next" | "prev">("next");
+
+  useEffect(() => {
+    if (prevPreviewSlideRef.current !== clampedSlideNumber) {
+      setPreviewEnter(clampedSlideNumber > prevPreviewSlideRef.current ? "next" : "prev");
+      prevPreviewSlideRef.current = clampedSlideNumber;
+    }
+  }, [clampedSlideNumber]);
 
   useEffect(() => {
     if (!presentationId || !presentation) {
@@ -168,7 +178,11 @@ export function PresentationPreviewPage() {
         </div>
       </header>
       <div className="preview-page__shell">
-        <div className="preview-page__canvas" style={canvasStyle}>
+        <div
+          className={`preview-page__canvas preview-page__canvas--enter preview-page__canvas--from-${previewEnter}`}
+          key={clampedSlideNumber}
+          style={canvasStyle}
+        >
           {sortedElements.map((element: SlideElement) => {
             if (element.type === "text") {
               return (

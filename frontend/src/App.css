@@ -284,6 +284,128 @@
   white-space: pre;
 }
 
+.slide-deck__slide-layer {
+  inset: 0;
+  pointer-events: auto;
+  position: absolute;
+}
+
+.slide-deck__slide-layer--enter {
+  animation: slideDeckEnter 320ms ease-out;
+}
+
+.slide-deck__slide-layer--from-next {
+  --slide-enter-x: 18px;
+}
+
+.slide-deck__slide-layer--from-prev {
+  --slide-enter-x: -18px;
+}
+
+@keyframes slideDeckEnter {
+  from {
+    opacity: 0;
+    transform: translateX(var(--slide-enter-x));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.slide-element-shell {
+  box-sizing: border-box;
+}
+
+.slide-element-shell__body {
+  inset: 0;
+  position: absolute;
+}
+
+.slide-element-shell .slide-text,
+.slide-element-shell .slide-image,
+.slide-element-shell .slide-video,
+.slide-element-shell .slide-code {
+  height: 100%;
+  width: 100%;
+}
+
+.slide-element-shell .slide-video iframe {
+  pointer-events: none;
+}
+
+.slide-element-handle {
+  background: #246bfd;
+  border: 1px solid #fff;
+  border-radius: 1px;
+  box-sizing: border-box;
+  height: 5px;
+  padding: 0;
+  position: absolute;
+  width: 5px;
+  z-index: 4;
+}
+
+.slide-element-handle--nw {
+  cursor: nwse-resize;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+}
+
+.slide-element-handle--ne {
+  cursor: nesw-resize;
+  right: 0;
+  top: 0;
+  transform: translate(50%, -50%);
+}
+
+.slide-element-handle--sw {
+  bottom: 0;
+  cursor: nesw-resize;
+  left: 0;
+  transform: translate(-50%, 50%);
+}
+
+.slide-element-handle--se {
+  bottom: 0;
+  cursor: nwse-resize;
+  right: 0;
+  transform: translate(50%, 50%);
+}
+
+.slide-element-shell--selected .slide-text,
+.slide-element-shell--selected .slide-image,
+.slide-element-shell--selected .slide-video,
+.slide-element-shell--selected .slide-code {
+  border-color: #246bfd;
+}
+
+.preview-page__canvas--enter {
+  animation: previewSlideEnter 400ms ease-out;
+}
+
+.preview-page__canvas--from-next {
+  --preview-enter-x: 22px;
+}
+
+.preview-page__canvas--from-prev {
+  --preview-enter-x: -22px;
+}
+
+@keyframes previewSlideEnter {
+  from {
+    opacity: 0;
+    transform: translateX(var(--preview-enter-x));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 .modal-backdrop {
   align-items: center;
   background: var(--backdrop-scrim);
