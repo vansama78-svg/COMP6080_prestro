@@ -6,7 +6,9 @@ export async function fetchJson<T>(
   path: string,
   init?: Parameters<typeof fetch>[1],
 ): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const base = API_BASE_URL.replace(/\/+$/, "");
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const res = await fetch(`${base}${normalizedPath}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
