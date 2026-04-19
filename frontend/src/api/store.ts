@@ -1,5 +1,5 @@
 import { fetchJson } from "./client";
-import { EMPTY_STORE, type PrestoStore } from "../types/presentation";
+import { EMPTY_STORE, migratePrestoStore, type PrestoStore } from "../types/presentation";
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -19,7 +19,7 @@ export async function getStoreApi(token: string): Promise<PrestoStore> {
     ? data.store.presentations
     : [];
 
-  return { presentations } as PrestoStore;
+  return migratePrestoStore({ presentations } as PrestoStore);
 }
 
 export async function putStoreApi(token: string, store: PrestoStore): Promise<void> {
