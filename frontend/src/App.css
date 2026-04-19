@@ -1,3 +1,20 @@
+/* Unified light-blue modal sheets — readable regardless of app light/dark theme */
+:root {
+  --modal-sheet-bg: #dff4fc;
+  --modal-sheet-bg-mid: #cceaf8;
+  --modal-sheet-text: #0c1e2e;
+  --modal-sheet-muted: #3d5a73;
+  --modal-input-bg: #ffffff;
+  --modal-input-border: #5eb8e8;
+  --modal-input-focus: #1e88e5;
+  --modal-divider: #9dd5f0;
+  --modal-button-bg: #ffffff;
+  --modal-button-text: #0c1e2e;
+  --modal-button-border: #64b5f6;
+  --modal-panel-item-bg: rgba(255, 255, 255, 0.82);
+  --modal-panel-item-hover: rgba(255, 255, 255, 0.95);
+}
+
 #root {
   min-height: 100vh;
 }
@@ -279,13 +296,92 @@
 }
 
 .modal {
-  background: var(--color-surface);
+  background: linear-gradient(
+    165deg,
+    var(--modal-sheet-bg) 0%,
+    var(--modal-sheet-bg-mid) 55%,
+    var(--modal-sheet-bg) 100%
+  );
+  border: 1px solid var(--modal-divider);
   border-radius: 10px;
   box-shadow: var(--shadow-modal);
-  color: var(--color-text);
+  color: var(--modal-sheet-text);
+  color-scheme: light;
   max-width: 32rem;
   padding: 1rem 1.25rem;
   width: 100%;
+}
+
+.modal .modal__title {
+  color: var(--modal-sheet-text);
+}
+
+.modal .form__field label {
+  color: var(--modal-sheet-text);
+}
+
+.modal .form__field input,
+.modal .form__field textarea {
+  background-color: var(--modal-input-bg);
+  border-color: var(--modal-input-border);
+  color: var(--modal-sheet-text);
+}
+
+.modal .form__field input:focus-visible,
+.modal .form__field textarea:focus-visible {
+  border-color: var(--modal-input-focus);
+  outline: 2px solid var(--modal-input-focus);
+  outline-offset: 1px;
+}
+
+.modal select,
+.modal .form__field select {
+  background-color: var(--modal-input-bg);
+  border-color: var(--modal-input-border);
+  color: var(--modal-sheet-text);
+}
+
+.modal button {
+  background-color: var(--modal-button-bg);
+  border: 1px solid var(--modal-button-border);
+  color: var(--modal-button-text);
+}
+
+.modal button:hover {
+  border-color: var(--modal-input-focus);
+}
+
+.modal button:focus-visible {
+  outline: 2px solid var(--modal-input-focus);
+  outline-offset: 2px;
+}
+
+.modal .theme-fieldset {
+  border-color: var(--modal-input-border);
+}
+
+.modal .theme-fieldset legend {
+  color: var(--modal-sheet-text);
+}
+
+.modal .theme-hint {
+  color: var(--modal-sheet-muted);
+}
+
+.modal .slide-panel-item {
+  background-color: var(--modal-panel-item-bg);
+  border-color: var(--modal-input-border);
+  color: var(--modal-sheet-text);
+}
+
+.modal .slide-panel-item:hover {
+  background-color: var(--modal-panel-item-hover);
+  border-color: var(--modal-input-focus);
+}
+
+.modal .slide-panel-item--active {
+  border-color: var(--modal-input-focus);
+  box-shadow: 0 0 0 2px rgba(30, 136, 229, 0.35);
 }
 
 .modal__title {
@@ -312,13 +408,43 @@
 }
 
 .error-dialog {
-  background: var(--color-surface);
+  background: linear-gradient(
+    165deg,
+    var(--modal-sheet-bg) 0%,
+    var(--modal-sheet-bg-mid) 55%,
+    var(--modal-sheet-bg) 100%
+  );
+  border: 1px solid var(--modal-divider);
   border-radius: 10px;
   box-shadow: var(--shadow-modal);
-  color: var(--color-text);
+  color: var(--modal-sheet-text);
+  color-scheme: light;
   max-width: 28rem;
   padding: 1rem 1.25rem;
   width: 100%;
+}
+
+.error-dialog .error-dialog__title {
+  color: var(--modal-sheet-text);
+}
+
+.error-dialog .error-dialog__body {
+  color: var(--modal-sheet-muted);
+}
+
+.error-dialog button {
+  background-color: var(--modal-button-bg);
+  border: 1px solid var(--modal-button-border);
+  color: var(--modal-button-text);
+}
+
+.error-dialog button:hover {
+  border-color: var(--modal-input-focus);
+}
+
+.error-dialog button:focus-visible {
+  outline: 2px solid var(--modal-input-focus);
+  outline-offset: 2px;
 }
 
 .error-dialog__header {
@@ -336,11 +462,15 @@
 .error-dialog__close {
   background: transparent;
   border: none;
-  color: var(--color-text);
+  color: var(--modal-sheet-muted);
   cursor: pointer;
   font-size: 1.5rem;
   line-height: 1;
   padding: 0.15rem 0.35rem;
+}
+
+.error-dialog__close:hover {
+  color: var(--modal-sheet-text);
 }
 
 .error-dialog__body {
